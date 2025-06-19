@@ -1,0 +1,33 @@
+diff --git a/PCbuild/pythoncore.vcxproj b/PCbuild/pythoncore.vcxproj
+index 7191279..d3dc5f1 100644
+--- a/PCbuild/pythoncore.vcxproj
++++ b/PCbuild/pythoncore.vcxproj
+@@ -282,6 +286,7 @@
+     <ClCompile Include="..\Modules\_io\iobase.c" />
+     <ClCompile Include="..\Modules\_io\stringio.c" />
+     <ClCompile Include="..\Modules\_io\textio.c" />
++    <ClCompile Include="..\Modules\socketmodule.c" />
+     <ClCompile Include="..\Objects\abstract.c" />
+     <ClCompile Include="..\Objects\boolobject.c" />
+     <ClCompile Include="..\Objects\bufferobject.c" />
+
+diff --git a/PC/config.c b/PC/config.c
+index 35c6608..48f0cfc 100644
+--- a/PC/config.c
++++ b/PC/config.c
+@@ -67,6 +67,7 @@ extern void init_subprocess(void);
+ extern void init_lsprof(void);
+ extern void init_ast(void);
+ extern void init_io(void);
++extern void init_socket(void);
+ extern void _PyWarnings_Init(void);
+ 
+ /* tools/freeze/makeconfig.py marker for additional "extern" */
+@@ -164,6 +165,7 @@ struct _inittab _PyImport_Inittab[] = {
+     {"_warnings", _PyWarnings_Init},
+ 
+     {"_io", init_io},
++    {"_socket", init_socket},
+ 
+     /* Sentinel */
+     {0, 0}

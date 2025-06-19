@@ -1,13 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
-
+call :ensure-vsdevcmd
 set PYTHON_VERSION=2.7.18
-
-if not defined VCINSTALLDIR (
-    echo Please execute this batch in the 'Developer Command Prompt from VS'
-    pause
-    exit /b 1
-)
 
 :: Identify the latest PlatformToolset version
 set "VCVERDIR=%VSINSTALLDIR%\MSBuild\Microsoft\VC"
@@ -42,35 +36,68 @@ if not exist "python-%PYTHON_VERSION%" (
     git clone --depth=1 --branch v%PYTHON_VERSION% https://github.com/python/cpython.git python-%PYTHON_VERSION%
 )
 
-cd "python-%PYTHON_VERSION%"
-if "%~1" == "-skip-patch" goto patched
+set SKIP_PATCH=false
+set BUILTINS=true
+:CheckOpts
+if "%~1" == "-skip-patch" (set SKIP_PATCH=true) & shift & goto CheckOpts
+pushd "python-%PYTHON_VERSION%"
+
+if "%SKIP_PATCH%" == "true" goto :patched
+
 echo Applying patches...
 for %%f in ("..\patches\*.patch") do (
     echo Applying %%~nxf
     git apply "%%f" || goto :patch-error
 )
+
 :patched
 
-:: Build with MSBuild
-for /f "tokens=*" %%a in ('wmic cpu get NumberOfCores ^| find /v "NumberOfCores"') do (
-    set COMPILE_THREADS=%%a
-    goto :compile
-)
-:compile
+pushd PCbuild
+REM currently not building with -e --no-tkinter flag as bf2 does not need externals by default
+REM if desired, DLLs (pyd) can be added to the default "PATH" (/admin /python/bf2 /mods/bf2/python)
+call build -m -c Release -p Win32 "/p:WindowsTargetPlatformVersion=%UCRTVersion%" "/p:PlatformToolset=%PTVER%"
+xcopy /y win32\dice_py.dll ..\..\.
+popd
 
-set "CFG=Release"
-if "%~1" == "-cfg:debug" set "CFG=Debug"
-msbuild PCbuild\pythoncore.vcxproj /p:Configuration=%CFG% /p:Platform=Win32 /p:WindowsTargetPlatformVersion=%WindowsSDKVersion% /p:PlatformToolset=%PTVER% -maxCpuCount:%COMPILE_THREADS% || goto :error
-xcopy /y PCbuild\win32\*.dll ..\.
-xcopy /y PCbuild\win32\*.lib ..\.
 if not exist "..\pylib-2.3.4.zip" powershell -Command "Compress-Archive -Path Lib\* -DestinationPath ..\pylib-2.3.4.zip"
-echo Build completed successfully.
-exit /b 0
+popd
 
-:error
+echo Build completed successfully.
+goto :exit-success
+
+:ensure-vsdevcmd
+if defined VCINSTALLDIR goto :EOF
+set "PF86=%ProgramFiles(x86)%"
+if "%PF86%" == "" set "PF86=%ProgramFiles%"
+if not exist "%PF86%\Microsoft Visual Studio\Installer\vswhere.exe" (
+    echo Visual Studio could not be detected.
+    goto :ensure-vsdevcmd-failed
+)
+
+SET "VSWHERE=%PF86%\Microsoft Visual Studio\Installer\vswhere.exe"
+("%VSWHERE%" -legacy -prerelease -latest -format text -nologo | findstr "installationPath:")>temp & (set /p VSPATH=)<temp & (del temp)
+SET "VSPATH=%VSPATH:~18%"
+call "%VSPATH%\Common7\Tools\VsDevCmd.bat"
+if defined VCINSTALLDIR goto :EOF
+
+:ensure-vsdevcmd-failed
+echo Please execute this batch in the 'Developer Command Prompt from VS'
+goto :exit-error
+
+:build-error
 echo ERROR: Build failed.
-exit /b 1
+goto :exit-error
 
 :patch-error
-echo Failed to patch - if already patched used '-skip-patch'
+echo Failed to apply patch
+set /P IGNORE_PATCH_ERROR=Continue (Y/[N])?
+if /I "%IGNORE_PATCH_ERROR%"=="Y" goto :patched
+goto :exit-error
+
+:exit-error
+pause
 exit /b 1
+
+:exit-success
+pause
+exit /b 0
